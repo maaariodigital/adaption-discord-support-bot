@@ -26,7 +26,7 @@ and Invent, the model is trained with AutoScientist, and answers come from Adapt
 | **Hallucination mitigation** | Used on the programs set, where wrong dates or amounts would do the most harm. |
 | **Adaptive Data: evaluation** | First 200-row test: grade **C → B**, score 6.0 → 7.6, +26.7%. With the final concise settings, the scores were part 2: C, −11.7%; programs: C, 0%. My hypothesis is that the grader favours longer answers than a Discord reply should have, but I haven't verified it (see feedback). |
 | **Invent a Dataset** | 600 code-switched conversations (150 per variety) that translation can't produce. |
-| **AutoScientist** | `recommend_hyperparams` and `list_models` to choose the base model and recipe. Three LoRA fine-tuning runs of `Qwen/Qwen3.5-9B` on all 6,733 rows, 9 iterations in total, each producing a downloaded adapter. Best win rates **0.399, 0.488 and 0.448** against a 0.7 target (see Results). |
+| **AutoScientist** | `recommend_hyperparams` and `list_models` to choose the base model and recipe. Four LoRA fine-tuning runs of `Qwen/Qwen3.5-9B`, 12 iterations in total, each producing a downloaded adapter. Runs 1–3 used the 6,733-row set; run 4 used a version with the docs in each prompt. Best win rates **0.399, 0.488, 0.448 and 0.178** against a 0.7 target (see Results). |
 | **Inference Stacks** (`file_search`) | The bot has a `BOT_RETRIEVAL=adaption` mode. Its default is a local keyword index, because indexing can only be switched on in the app (see feedback). |
 
 **Final training set: 6,733 rows**
@@ -89,6 +89,23 @@ and Invent, the model is trained with AutoScientist, and answers come from Adapt
 - The data teaches short, linked Discord replies that hand off to a human whenever the docs don't cover something. A judge comparing them with the base model's longer, more confident answers likely prefers the longer ones. Adaptive Data's evaluation leaned the same way (see feedback 6).
 - A 9B model also can't reliably memorize every fact from 790 knowledge chunks out of 6.7k rows. Fine-tuning changes how the model writes much more than what it knows.
 - I can't confirm this without seeing the judge's comparisons (feedback 10).
+
+**Run 4: docs in the prompt.** Runs 1–3 trained on bare question → answer pairs, so the model had to memorize Adaption's docs. The live bot instead retrieves docs and answers from them. For run 4, [`pipeline/step3c_grounded.py`](pipeline/step3c_grounded.py) rebuilt the set to match:
+- **Docs in each prompt:** each prompt carries the four doc chunks the bot would retrieve, then the question.
+- **435 rows dropped:** their only links were to news or third-party pages outside `knowledge/`, so no prompt could contain their facts.
+- **587 code-switched rows re-answered from those docs,** with the bot's own instructions and `deepseek-v4-flash` (0.06 credits).
+  - 93% of the original Invent answers had handed off ("not in my context") although the docs cover most of the questions. Many linked domains that don't exist (adaption.io, adaption.ai), and at least one was wrong: it said unused credits expire.
+  - After the rewrite, 64% mention handoff and none link a made-up domain.
+
+| Run | What I changed | Iterations, wall time | Best win rate | Best recipe | Eval loss |
+|---|---|---|---|---|---|
+| 4 | Docs-in-prompt set (6,298 rows), same starting point as run 3 | 3, 1 h 32 min | **0.178** | lr 5e-5, 3 epochs (174 steps), r 32 | 0.94 → 0.81, still falling, no overfitting |
+
+The model learned this task cleanly: a steady loss curve with no overfitting. Yet its win rate was the lowest of all four runs. Two readings fit:
+- **The comparison prefers longer answers.** With the same docs in front of it, the base model can write a long, thorough answer. The tuned model writes the short Discord reply it was taught. If the comparison favours length or completeness, the better the tuned model learns the style, the more it loses. That is what runs 3 and 4 show, and Adaptive Data's evaluation leaned the same way.
+- **The comparison isn't measuring what the bot needs.** It may not grade the tuned model on prompts in this format at all.
+
+AutoScientist doesn't show the judged pairs, so I can't tell which (feedback 10). Settling it would take hosting the adapter and running this project's own per-language eval on it, since Adaption doesn't serve custom fine-tunes.
 
 **What the live bot uses:** it stays on hosted `gemma-4-26b-a4b-it` with retrieval. That design is the right default anyway, since program dates and credit offers change faster than a model can be retrained. The fine-tuning is where the data's style rules would pay off, combined with retrieval rather than replacing it.
 
@@ -185,7 +202,7 @@ These came up while building, roughly in order of impact.
     - `autoscientist.get` returns only the best win rate and the best hyperparameters.
     - It doesn't say which model the run was compared against, what judge or prompt set was used, or what each iteration tried.
     - With a 0.399 result, I can't tell whether to change the data, the recipe or the target.
-    - Across three runs, the win rate and the eval loss disagreed: run 3 halved the eval loss but scored lower than run 2. Seeing a few judged comparisons would show whether the judge penalizes short answers or handoffs.
+    - Across four runs, the win rate and the eval loss disagreed. Run 3 halved the eval loss but scored lower than run 2, and run 4 (docs in the prompt, a clean loss curve) scored lowest at 0.178. Seeing a few judged comparisons would show whether the judge penalizes short answers or handoffs.
     - In runs 1 and 2 (6 iterations), AutoScientist never raised the learning rate above 1e-5 or trained for more than one epoch, although the eval loss barely moved. It only explored stronger recipes after I overrode the starting point, which the docs call "not advised".
 11. **The checkpoint download is misnamed.** It's called `best-checkpoint.tgz` but is actually a **zstd**-compressed tar, so `tar -xzf` fails.
 12. **The adapter has an empty model card.** Its README is the default Hugging Face template, and `adapter_config.json` names the base as `togethercomputer/Qwen3.5-9B` rather than `Qwen/Qwen3.5-9B`.
@@ -206,7 +223,6 @@ These came up while building, roughly in order of impact.
 
 ## Next steps
 
-- Rebalance the training data before another AutoScientist run: fewer handoffs in the code-switched rows (about 90% now), and more Invent data for the varieties that score lowest.
-- Host an adapter, run the same per-language eval on it with retrieval and closed-book (`--retrieval none`), and switch the bot over only if it beats the hosted model.
+- Host the run-4 adapter and run this project's per-language eval on it, the same way the bot works (docs in the prompt). Switch the bot over only if it beats the hosted model. That would settle whether the low win rate reflects the model or the comparison.
 - Native-speaker spot checks, starting with Urdu and Swahili.
 - Feed 👎-rated answers back into the next Adaptive Data run.
