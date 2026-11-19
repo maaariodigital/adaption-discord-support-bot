@@ -77,4 +77,4 @@ training data:
 
 - ✅ Dataset: 6,733 rows in five languages plus four code-switched varieties.
 - ✅ Bot running on Adaption hosted inference, evaluated per language (see [WRITEUP.md](WRITEUP.md#results)).
-- ⚠️ The first AutoScientist run (Qwen3.5 9B, 2 iterations) reached a win rate of 0.399 against a 0.7 target. The live bot therefore stays on the hosted model with retrieval. The next run would use more iterations and a stronger LoRA recipe.
+- ⚠️ Three AutoScientist runs (Qwen3.5 9B, 9 iterations in total) reached win rates of 0.399, 0.488 and 0.448 against a 0.7 target, so none beat the base model. The strongest recipe halved the eval loss but overfit. The live bot stays on the hosted model with retrieval; details in [WRITEUP.md](WRITEUP.md#fine-tuning-autoscientist).

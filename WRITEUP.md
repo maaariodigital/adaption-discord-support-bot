@@ -26,7 +26,7 @@ and Invent, the model is trained with AutoScientist, and answers come from Adapt
 | **Hallucination mitigation** | Used on the programs set, where wrong dates or amounts would do the most harm. |
 | **Adaptive Data: evaluation** | First 200-row test: grade **C → B**, score 6.0 → 7.6, +26.7%. With the final concise settings, the scores were part 2: C, −11.7%; programs: C, 0%. My hypothesis is that the grader favours longer answers than a Discord reply should have, but I haven't verified it (see feedback). |
 | **Invent a Dataset** | 600 code-switched conversations (150 per variety) that translation can't produce. |
-| **AutoScientist** | `recommend_hyperparams` and `list_models` to choose the base model and recipe. Fine-tuned `Qwen/Qwen3.5-9B` with LoRA on all 6,733 rows: 2 iterations in 54 minutes, which produced a downloaded adapter. Best win rate **0.399** against a 0.7 target (see Results). |
+| **AutoScientist** | `recommend_hyperparams` and `list_models` to choose the base model and recipe. Three LoRA fine-tuning runs of `Qwen/Qwen3.5-9B` on all 6,733 rows, 9 iterations in total, each producing a downloaded adapter. Best win rates **0.399, 0.488 and 0.448** against a 0.7 target (see Results). |
 | **Inference Stacks** (`file_search`) | The bot has a `BOT_RETRIEVAL=adaption` mode. Its default is a local keyword index, because indexing can only be switched on in the app (see feedback). |
 
 **Final training set: 6,733 rows**
@@ -69,21 +69,28 @@ and Invent, the model is trained with AutoScientist, and answers come from Adapt
 
 ### Fine-tuning (AutoScientist)
 
-**The run did not reach its target.** Best win rate: **0.399** (target 0.7).
+**None of the three runs reached the target or beat the base model.** A win rate of 0.5 means "as good as the untrained model"; the target was 0.7.
 
-**Training log** (`trainer_state.json`):
-- 1 epoch of only 21 optimizer steps (batch size "max").
-- Learning rate peaked at 1e-5, which is low for LoRA.
-- Eval loss went from 2.31 to 2.21, so the adapter moved only a little from the base model.
-- Both iterations kept the recommended recipe.
+| Run | What I changed | Iterations, wall time | Best win rate | Best recipe (from `autoscientist.get`) | Eval loss, first → last eval (`trainer_state.json`) |
+|---|---|---|---|---|---|
+| 1 | Nothing: AutoScientist's recommendation | 2, 54 min | 0.399 | lr 1e-5, 1 epoch (21 steps), r 16 | 2.31 → 2.21 |
+| 2 | More iterations, AutoScientist decides | 4, 1 h 53 min | **0.488** | lr 1e-5, 1 epoch (21 steps), r 8 | 2.31 → 2.28 |
+| 3 | Started from lr 1e-4 and 2 epochs (`hyperparams` override) | 3, 1 h 22 min | 0.448 | lr 2e-4, 6 epochs (126 steps), r 48 | 1.20 → 1.03 (lowest 1.00 at step 76) |
 
-**My reading:** the recommended recipe is too conservative for a 6.7k-row instruction set in nine language varieties. The grader may also favour the base model's longer answers over the short, linked Discord replies this data teaches. That matches what Adaptive Data's evaluation showed.
+**What each run showed:**
+- **Runs 1 and 2:** AutoScientist never moved off a learning rate of 1e-5 and a single epoch. Between the two runs' best results, only the LoRA rank and warmup changed, and the eval loss barely moved, so those adapters stay close to the base model.
+- **Run 3:** given a stronger starting point, AutoScientist went further on its own, to twice the learning rate, three times the epochs and three times the rank I gave it.
+  - The model learned the data far better: eval loss fell from about 2.3 to 1.0.
+  - It overfit: eval loss bottomed out at step 76 of 126 and rose after that, while training loss kept falling to 0.47.
+  - Even so, its win rate (0.448) was **lower** than run 2's, whose adapter barely changed the model.
 
-**Next run I'd try:**
-- More iterations, so AutoScientist explores further.
-- A LoRA learning rate around 1e-4 to 2e-4, 2–3 epochs, and a smaller batch.
+**My reading:**
+- A much better fit to the data didn't win more comparisons, so the bottleneck isn't the recipe.
+- The data teaches short, linked Discord replies that hand off to a human whenever the docs don't cover something. A judge comparing them with the base model's longer, more confident answers likely prefers the longer ones. Adaptive Data's evaluation leaned the same way (see feedback 6).
+- A 9B model also can't reliably memorize every fact from 790 knowledge chunks out of 6.7k rows. Fine-tuning changes how the model writes much more than what it knows.
+- I can't confirm this without seeing the judge's comparisons (feedback 10).
 
-**What the live bot uses:** it stays on hosted `gemma-4-26b-a4b-it` with retrieval. That design is the right default anyway, since program dates and credit offers change faster than a model can be retrained.
+**What the live bot uses:** it stays on hosted `gemma-4-26b-a4b-it` with retrieval. That design is the right default anyway, since program dates and credit offers change faster than a model can be retrained. The fine-tuning is where the data's style rules would pay off, combined with retrieval rather than replacing it.
 
 ### Bot (hosted model + retrieval)
 
@@ -166,6 +173,8 @@ These came up while building, roughly in order of impact.
     - `autoscientist.get` returns only the best win rate and the best hyperparameters.
     - It doesn't say which model the run was compared against, what judge or prompt set was used, or what each iteration tried.
     - With a 0.399 result, I can't tell whether to change the data, the recipe or the target.
+    - Across three runs, the win rate and the eval loss disagreed: run 3 halved the eval loss but scored lower than run 2. Seeing a few judged comparisons would show whether the judge penalizes short answers or handoffs.
+    - In runs 1 and 2 (6 iterations), AutoScientist never raised the learning rate above 1e-5 or trained for more than one epoch, although the eval loss barely moved. It only explored stronger recipes after I overrode the starting point, which the docs call "not advised".
 11. **The checkpoint download is misnamed.** It's called `best-checkpoint.tgz` but is actually a **zstd**-compressed tar, so `tar -xzf` fails.
 12. **The adapter has an empty model card.** Its README is the default Hugging Face template, and `adapter_config.json` names the base as `togethercomputer/Qwen3.5-9B` rather than `Qwen/Qwen3.5-9B`.
 
@@ -185,7 +194,7 @@ These came up while building, roughly in order of impact.
 
 ## Next steps
 
-- Rerun AutoScientist with more iterations and a stronger LoRA recipe.
-- Host the adapter, run the same per-language eval on it closed-book (`--retrieval none`), and switch the bot over only if it beats the hosted model.
+- Rebalance the training data before another AutoScientist run: fewer handoffs in the code-switched rows (about 90% now), and more Invent data for the varieties that score lowest.
+- Host an adapter, run the same per-language eval on it with retrieval and closed-book (`--retrieval none`), and switch the bot over only if it beats the hosted model.
 - Native-speaker spot checks, starting with Urdu and Swahili.
 - Feed 👎-rated answers back into the next Adaptive Data run.
