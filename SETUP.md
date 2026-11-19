@@ -117,6 +117,7 @@ Every step that spends credits first asks Adaption for a quote, shows it, and wa
 | 2b | `python pipeline/step2b_programs.py`, then `--download` | Expand thin program topics, then adapt with hallucination mitigation | ~10 |
 | 3 | `python pipeline/step3_invent_codeswitch.py`, then `--download` | Invent: 150 Hinglish, Roman Urdu, Taglish and Swahili-English rows each | ~60 |
 | 3b | `python pipeline/step3b_assemble.py --upload` | Cleans and merges everything into `data/final/train.jsonl` and uploads it | ~0.02 |
+| 3c | `python pipeline/step3c_grounded.py --dry-run`, then `--upload` | Optional: rebuilds the set with the docs the bot would retrieve inside each prompt, drops rows whose facts aren't in `knowledge/`, and re-answers the code-switched rows from those docs. Train on it with `step4_train.py --dataset grounded` | ~0.06 |
 | 4 | `python pipeline/step4_train.py`, then `--wait` | AutoScientist: LoRA fine-tune of `Qwen/Qwen3.5-9B`, then downloads the adapter | no quote in the API |
 | 6 | `python pipeline/step6_publish_hf.py --github <you> --upload` | Publishes the dataset and adapter to Hugging Face as private repos. Needs `HF_TOKEN` (a write token) in `.env`; the cards are staged in `data/hf/`. | free |
 

@@ -115,6 +115,18 @@ and Invent, the model is trained with AutoScientist, and answers come from Adapt
 
 Accuracy is the judge's 0–2 score scaled to a percentage.
 
+**Model comparison.** I reran the eval with two other hosted models. On the 134 answers all three gave (15 base questions in 9 varieties):
+
+| Model | Accuracy | Flagged invented facts | Median latency | Cost per answer (credits) |
+|---|---|---|---|---|
+| `gemma-4-26b-a4b-it` (live) | 76% | 34% | 1.4 s | ~0.0003 |
+| `gemma-4-31b-it` | 78% | 33% | 2.2 s | ~0.0001 |
+| `glm-5.2` | 82% | 65% | 4.3 s | ~0.0017 |
+
+- On the full 539-answer set, gemma-4-31b scored 72% against gemma-4-26b's 70%, with 14 failed answers (rate limits).
+- glm-5.2 adds more detail, which helps accuracy but doubles the answers the judge flags for unsupported facts. It is also three times slower and reasons before answering.
+- With 134 answers, a few points' difference is within noise, so the bot stays on `gemma-4-26b-a4b-it`.
+
 **What I take from it:**
 - **Language is the strong part.** The bot answers in the right language 98% of the time and the right script ~100% of the time.
   - That's after one fix the eval found: Gemma had been answering Devanagari questions in Roman Hindi.

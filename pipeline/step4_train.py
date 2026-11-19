@@ -6,6 +6,7 @@ dataset with prompt/completion columns, so no column mapping is needed.
     python pipeline/step4_train.py            # show recommended recipe, confirm, launch
     python pipeline/step4_train.py --wait     # wait for the run, print win rate, download checkpoint
     python pipeline/step4_train.py --run-name run2 --iterations 4   # a further run; files go to models/run2/
+    python pipeline/step4_train.py --run-name run4 --dataset grounded   # docs-in-the-prompt set from step3c
 
 AutoScientist has no credit estimate in the API, so this step shows what will
 run and asks for confirmation. Keep max_iterations low for the first run.
@@ -15,6 +16,10 @@ import json
 
 from common import confirm_spend, get_client, load_state, save_state
 from config import BASE_MODEL, MAX_ITERATIONS, ROOT, TARGET_WIN_RATE
+
+
+DATASETS = {"final": ("train_dataset_id", "step3b_assemble.py"),
+            "grounded": ("train_dataset_id_grounded", "step3c_grounded.py")}
 
 
 def run_key(name: str) -> str:
@@ -46,6 +51,8 @@ def main():
     # Runs 1-2 kept lr 1e-5 / 1 epoch (21 steps) and the loss barely moved.
     ap.add_argument("--lr", type=float, help="learning rate override, e.g. 1e-4")
     ap.add_argument("--epochs", type=float, help="number of passes over the data, e.g. 2")
+    ap.add_argument("--dataset", choices=sorted(DATASETS), default="final",
+                    help="final: question -> answer (step3b); grounded: docs in each prompt (step3c)")
     ap.add_argument("--yes", action="store_true")
     ap.add_argument("--wait", action="store_true")
     args = ap.parse_args()
@@ -56,16 +63,17 @@ def main():
         return wait_and_download(client, state, args.run_name)
     if state.get(run_key(args.run_name)):
         raise SystemExit(f"{args.run_name} already launched ({state[run_key(args.run_name)]}). Use --wait or a new --run-name.")
-    dsid = state.get("train_dataset_id")
+    key, maker = DATASETS[args.dataset]
+    dsid = state.get(key)
     if not dsid:
-        raise SystemExit("Run step3b_assemble.py --upload first.")
+        raise SystemExit(f"Run {maker} --upload first.")
     rec = client.datasets.get(dsid)
     kw = {"dataset_id": dsid, "model": args.model}
     if args.general_rows:
         kw["augmentation_general_rows"] = args.general_rows
     hp = client.autoscientist.recommend_hyperparams(**kw)
     overrides = {k: v for k, v in (("learning_rate", args.lr), ("n_epochs", args.epochs)) if v is not None}
-    quote = (f"Dataset {dsid}: {rec.row_count} rows (+{args.general_rows} general rows)\n"
+    quote = (f"Dataset {dsid} ({args.dataset}): {rec.row_count} rows (+{args.general_rows} general rows)\n"
              f"Model {args.model}, SFT, up to {args.iterations} iteration(s), target win rate {TARGET_WIN_RATE}\n"
              f"Recommended recipe: {hp.model_dump(exclude_none=True)}\n"
              f"Overrides: {overrides or 'none'}\n"
