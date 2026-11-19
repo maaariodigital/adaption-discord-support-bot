@@ -1,0 +1,12 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Generated locally (raw scrape holds third-party posts; dataset and adapter are on Hugging Face)
+data/
+models/
+*.log

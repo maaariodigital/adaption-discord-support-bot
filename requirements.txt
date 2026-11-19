@@ -1,0 +1,6 @@
+adaption==0.19.0
+python-dotenv==1.2.4
+discord.py==2.6.4
+rank-bm25==0.2.2
+zstandard==0.23.0
+huggingface_hub==0.26.2
