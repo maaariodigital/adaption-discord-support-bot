@@ -42,6 +42,10 @@ def main():
     ap.add_argument("--general-rows", type=int, default=0,
                     help="general-purpose rows to add against forgetting (extra credits)")
     ap.add_argument("--run-name", default="run1", help="separate state and files per run")
+    # Overrides replace AutoScientist's derived values (its docs call them "not advised").
+    # Runs 1-2 kept lr 1e-5 / 1 epoch (21 steps) and the loss barely moved.
+    ap.add_argument("--lr", type=float, help="learning rate override, e.g. 1e-4")
+    ap.add_argument("--epochs", type=float, help="number of passes over the data, e.g. 2")
     ap.add_argument("--yes", action="store_true")
     ap.add_argument("--wait", action="store_true")
     args = ap.parse_args()
@@ -60,12 +64,16 @@ def main():
     if args.general_rows:
         kw["augmentation_general_rows"] = args.general_rows
     hp = client.autoscientist.recommend_hyperparams(**kw)
+    overrides = {k: v for k, v in (("learning_rate", args.lr), ("n_epochs", args.epochs)) if v is not None}
     quote = (f"Dataset {dsid}: {rec.row_count} rows (+{args.general_rows} general rows)\n"
              f"Model {args.model}, SFT, up to {args.iterations} iteration(s), target win rate {TARGET_WIN_RATE}\n"
              f"Recommended recipe: {hp.model_dump(exclude_none=True)}\n"
+             f"Overrides: {overrides or 'none'}\n"
              "Cost: not quotable through the API. Check your credit balance in the app before and after.")
     if not confirm_spend("AutoScientist training run", quote, args.yes):
         return
+    if overrides:
+        kw["hyperparams"] = overrides
     run = client.autoscientist.create(
         **kw, training_method="instruction", max_iterations=args.iterations,
         target_win_rate=TARGET_WIN_RATE, idempotency_key=f"train-{dsid}-{args.model}-{args.iterations}-{args.run_name}")
