@@ -49,16 +49,22 @@ SEARCH_HINT = (
     "from what you find."
 )
 MAX_HISTORY = 10
+# The search-query rewrite is a tiny task: always use a fast model without hidden reasoning.
+QUERY_MODEL = "gemma-4-26b-a4b-it"
+# Some hosted models (glm, qwen 397b) reason before answering, and the reasoning counts toward this cap.
+MAX_OUTPUT = 2000
 FALLBACK = ("Sorry, I couldn't answer that just now. Please try again in a moment, "
             "or use the Talk to a human button below.")
 
 
 class Answerer:
-    def __init__(self, model: str, retrieval: str = "local", kb_dataset_id: str | None = None):
+    def __init__(self, model: str, retrieval: str = "local", kb_dataset_id: str | None = None,
+                 query_model: str = QUERY_MODEL):
         # Short timeout, one retry: a Discord user shouldn't wait more than ~30 s.
         self.client = AsyncAdaption(timeout=25, max_retries=1)
         self.query_opts = {"timeout": 10, "max_retries": 0}  # the eval raises these to wait out rate limits
         self.model = model
+        self.query_model = query_model
         self.retrieval = retrieval if (retrieval != "adaption" or kb_dataset_id) else "local"
         self.kb_dataset_id = kb_dataset_id
         self.knowledge = Knowledge() if self.retrieval == "local" else None
@@ -67,7 +73,7 @@ class Answerer:
         convo = "\n".join(f"{m['role']}: {m['content'][:600]}" for m in history[-4:])
         try:
             r = await self.client.with_options(**self.query_opts).responses.create(
-                model=self.model, instructions=QUERY_INSTRUCTIONS, input=convo,
+                model=self.query_model, instructions=QUERY_INSTRUCTIONS, input=convo,
                 max_output_tokens=60, temperature=0)
             return (r.output_text or "").strip() or history[-1]["content"]
         except Exception as e:  # search with the raw message rather than fail
@@ -84,18 +90,18 @@ class Answerer:
                 r = await self.client.responses.create(
                     model=self.model, instructions=BLUEPRINT + STYLE_HINT + SEARCH_HINT + hint, input=history,
                     tools=[{"type": "file_search", "dataset_ids": [self.kb_dataset_id]}],
-                    max_tool_calls=3, max_output_tokens=700, temperature=0.3)
+                    max_tool_calls=3, max_output_tokens=MAX_OUTPUT, temperature=0.3)
                 return clean(r.output_text), []
             if self.retrieval == "none":  # closed book: how a fine-tuned model is meant to work
                 r = await self.client.responses.create(model=self.model, instructions=BLUEPRINT + STYLE_HINT + hint,
-                                                       input=history, max_output_tokens=700, temperature=0.3)
+                                                       input=history, max_output_tokens=MAX_OUTPUT, temperature=0.3)
                 return clean(r.output_text), []
             query = await self._query(history)
             chunks = self.knowledge.search(query)
             instructions = (BLUEPRINT + STYLE_HINT + "\n\nCONTEXT (Adaption's public docs, blog and site; link the most "
                             "relevant URL):\n" + format_context(chunks) + hint)
             r = await self.client.responses.create(model=self.model, instructions=instructions, input=history,
-                                                   max_output_tokens=700, temperature=0.3)
+                                                   max_output_tokens=MAX_OUTPUT, temperature=0.3)
             return clean(r.output_text), [c.url for c in chunks if c.url]
         except Exception as e:  # network or API error: never leave the user hanging
             print(f"answer error: {e!r}")

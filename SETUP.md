@@ -124,11 +124,11 @@ Prefix each command with `.venv/Scripts/` as in Part A. Runs take **1–2 hours 
 time**, even when Adaption estimates minutes. The `--download` commands tell you if a run is still going,
 so it's safe to rerun them. Run IDs are kept in `data/work/state.json`, so you can stop and resume any time.
 
-**Unpacking the adapter:** the downloaded `models/best-checkpoint.tgz` is a *zstd*-compressed tar, despite
+**Unpacking the adapter:** the downloaded `models/run1/best-checkpoint.tgz` is a *zstd*-compressed tar, despite
 the `.tgz` name. Unpack it with:
 
 ```bash
-.venv/Scripts/python -c "import tarfile,zstandard; tarfile.open(fileobj=zstandard.ZstdDecompressor().stream_reader(open('models/best-checkpoint.tgz','rb')), mode='r|').extractall('models/lora', filter='data')"
+.venv/Scripts/python -c "import tarfile,zstandard; tarfile.open(fileobj=zstandard.ZstdDecompressor().stream_reader(open('models/run1/best-checkpoint.tgz','rb')), mode='r|').extractall('models/run1/lora', filter='data')"
 ```
 
 **Using the adapter:** it's a standard PEFT LoRA for `Qwen/Qwen3.5-9B`. Load it with `transformers` + `peft`,
